@@ -1,18 +1,21 @@
-# http-heartbeat
-基于http的心跳管理服务
+package main
 
-### 服务层使用参考
+import (
+	"github.com/domac/http-heartbeat/hb"
+	"log"
+	"net/http"
+	"time"
+)
 
-```go
 func init() {
 	hb.DefaultHeartBeatService = hb.NewHeartBeatService(1*time.Second, time.Second*5)
 
 	hb.DefaultHeartBeatService.AddOnlineCallBacks(func(evt *hb.HeartbeatEvent) {
-		//code 
+		log.Printf(">>> Online : mid=%s, uid=%s, last=%s, next=%s\n", evt.GetInfo().Mid, evt.GetInfo().Uid, evt.GetLast(), evt.GetNext())
 	})
 
 	hb.DefaultHeartBeatService.AddOfflineCallBacks(func(evt *hb.HeartbeatEvent) {
-		//code
+		log.Printf("--- Offline : mid=%s, uid=%s, last=%s, next=%s\n", evt.GetInfo().Mid, evt.GetInfo().Uid, evt.GetLast(), evt.GetNext())
 	})
 }
 
@@ -23,4 +26,3 @@ func main() {
 	log.Println("start hb server")
 	http.ListenAndServe(":10029", nil)
 }
-```
