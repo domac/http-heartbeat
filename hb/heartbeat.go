@@ -20,6 +20,7 @@ var (
 	ErrInvalidId         = errors.New("invalid id request")
 	ErrInvalidHb         = errors.New("heartbeats request fail, please use another mid")
 	ErrHbServiceShutdown = errors.New("heartbeats service was shutdown")
+	ErrTaskManagerNull   = errors.New("task manager is null")
 )
 
 //默认心跳服务
@@ -165,6 +166,8 @@ type HeartBeatService struct {
 	offlineCallBack []HbCallBackFunc //离线回调
 
 	maxTryCount uint32
+
+	taskManager *SyncTaskManager
 }
 
 //根据检测间隔和心跳频率构造心跳服务
@@ -479,11 +482,28 @@ func (hb *HeartBeatService) drainNotify() {
 	}
 }
 
+func (hb *HeartBeatService) Schedule(taskManager *SyncTaskManager) error {
+	if taskManager == nil {
+		return ErrTaskManagerNull
+	}
+	hb.taskManager = taskManager
+	go hb.taskManager.Start()
+	return nil
+}
+
+func (hb *HeartBeatService) GetTaskManager() *SyncTaskManager {
+	return hb.taskManager
+}
+
 //关闭心跳服务
 func (hb *HeartBeatService) Stop() {
+
 	close(hb.stopChan)
-	//hb.drainNotify()
 	hb.running = false
+
+	if hb.taskManager != nil {
+		hb.taskManager.Stop()
+	}
 	time.Sleep(1 * time.Second)
 }
 
