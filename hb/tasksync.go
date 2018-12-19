@@ -3,7 +3,6 @@ package hb
 import (
 	"context"
 	"log"
-	"strconv"
 	"sync"
 	"time"
 )
@@ -14,7 +13,7 @@ type ISyncTask interface {
 	Close() error
 	Name() string
 	Flush() error
-	QueryById(id string) ([]byte, error)
+	QueryById(id string) (interface{}, error)
 }
 
 //任务同步管理器
@@ -52,8 +51,8 @@ func (manager *SyncTaskManager) AddTaskSyncs(tasks ...ISyncTask) {
 }
 
 //获取信息
-func (manager *SyncTaskManager) FindInfosById(id string) map[string][]byte {
-	result := make(map[string][]byte, len(manager.tasks))
+func (manager *SyncTaskManager) FindInfosById(id string) map[string]interface{} {
+	result := make(map[string]interface{}, len(manager.tasks))
 	for _, t := range manager.tasks {
 		b, err := t.QueryById(id)
 		if err != nil {
@@ -104,18 +103,17 @@ func (test *TestSyncTask) Close() error {
 }
 
 func (test *TestSyncTask) Name() string {
-	return "TestTask"
+	return "TaskTime"
 }
 
 func (test *TestSyncTask) Flush() error {
 	return nil
 }
 
-func (test *TestSyncTask) QueryById(id string) ([]byte, error) {
+func (test *TestSyncTask) QueryById(id string) (interface{}, error) {
 	data, ok := test.testMap[id]
 	if !ok {
-		return []byte("no counter"), nil
+		return uint64(0), nil
 	}
-	s := strconv.Itoa(int(data))
-	return []byte(s), nil
+	return data, nil
 }

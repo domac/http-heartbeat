@@ -20,7 +20,7 @@ func init() {
 	hb.DefaultHeartBeatService.AddOnlineCallBacks(func(evt *hb.HeartbeatEvent) {
 		log.Printf("Online : mid=%s, uid=%s, last=%s, next=%s\n", evt.GetInfo().Mid, evt.GetInfo().Uid, evt.GetLast(), evt.GetNext())
 		m := hb.DefaultHeartBeatService.GetTaskManager().FindInfosById(evt.GetInfo().Mid)
-		log.Printf(">>> test=> %s\n", m["TestTask"])
+		log.Printf(">>> test=> %v\n", m["TaskTime"])
 	})
 
 	hb.DefaultHeartBeatService.AddOfflineCallBacks(func(evt *hb.HeartbeatEvent) {

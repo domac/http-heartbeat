@@ -19,7 +19,7 @@ func TestSyncTaskGet(t *testing.T) {
 		t.Fail()
 	}
 
-	t.Logf("1. %s\n", data)
+	t.Logf("1. %d\n", data)
 
 	time.Sleep(time.Second * 5)
 
@@ -30,7 +30,7 @@ func TestSyncTaskGet(t *testing.T) {
 		t.Fail()
 	}
 
-	t.Logf("2. %s\n", data)
+	t.Logf("2. %d\n", data)
 
 	manager.Stop()
 

@@ -26,6 +26,8 @@ var (
 //默认心跳服务
 var DefaultHeartBeatService *HeartBeatService
 
+var HbSyncTaskFields = [...]string{"ConfigTime", "TaskTime"}
+
 const (
 	SHARDS_NUM          = 32           //存储分片数
 	EVENT_CHAN_SIZE     = 4096         //事件任务通道缓冲区大小
@@ -50,9 +52,11 @@ const (
 )
 
 type (
-	RET_CODE int //返回码类型
+	//返回码类型
+	RET_CODE int
 
-	HbCallBackFunc func(evt *HeartbeatEvent) //任务钩子类型
+	//任务钩子函数类型
+	HbCallBackFunc func(evt *HeartbeatEvent)
 
 	//心跳状态
 	HB_STATUS int
@@ -167,6 +171,7 @@ type HeartBeatService struct {
 
 	maxTryCount uint32
 
+	//任务管理器
 	taskManager *SyncTaskManager
 }
 
@@ -251,6 +256,7 @@ func (hb *HeartBeatService) handleEventNotify() {
 	}
 }
 
+//活动事件检测
 func (hb *HeartBeatService) activeCheck() {
 	for i := 0; i < SHARDS_NUM; i++ {
 		//异步处理
@@ -277,6 +283,7 @@ func (hb *HeartBeatService) activeCheck() {
 	}
 }
 
+//等待事件检测
 func (hb *HeartBeatService) waitingCheck() {
 	for i := 0; i < SHARDS_NUM; i++ {
 		go func(i int) {
@@ -419,6 +426,7 @@ func (hb *HeartBeatService) AddOfflineCallBacks(callback ...HbCallBackFunc) {
 	hb.offlineCallBack = append(hb.offlineCallBack, callback...)
 }
 
+//查找所有活跃事件
 func (hb *HeartBeatService) FindAllActiveEvents() []*HeartbeatEvent {
 	result := make([]*HeartbeatEvent, 0)
 	for i := 0; i < SHARDS_NUM; i++ {
@@ -431,6 +439,7 @@ func (hb *HeartBeatService) FindAllActiveEvents() []*HeartbeatEvent {
 	return result
 }
 
+//查找所有等待事件
 func (hb *HeartBeatService) FindAllWaitingEvents() []*HeartbeatEvent {
 	result := make([]*HeartbeatEvent, 0)
 	for i := 0; i < SHARDS_NUM; i++ {
@@ -443,6 +452,7 @@ func (hb *HeartBeatService) FindAllWaitingEvents() []*HeartbeatEvent {
 	return result
 }
 
+//根据id获取对应的事件
 func (hb *HeartBeatService) FindByMid(mid string) (*HeartbeatEvent, bool) {
 	idx := hashFunc(mid) % SHARDS_NUM
 	hb.activeLock[idx].RLock()
@@ -482,6 +492,7 @@ func (hb *HeartBeatService) drainNotify() {
 	}
 }
 
+//注册任务管理器
 func (hb *HeartBeatService) Schedule(taskManager *SyncTaskManager) error {
 	if taskManager == nil {
 		return ErrTaskManagerNull
@@ -649,6 +660,7 @@ func HeartBeatCgi(rspWriter http.ResponseWriter, req *http.Request) {
 	//是否初始化默认的心跳服务
 	if DefaultHeartBeatService != nil {
 
+		//返回心跳间隔(单位秒)
 		hbMessage.HbInterval = uint32(DefaultHeartBeatService.rate / time.Second)
 
 		hb, err := DefaultHeartBeatService.Attach(suid, mid)
@@ -662,9 +674,22 @@ func HeartBeatCgi(rspWriter http.ResponseWriter, req *http.Request) {
 			return
 		}
 
+		//正确的心跳返回
 		hbMessage.Info["ret_code"] = hb.retCode
 		hbMessage.Info["last"] = hb.GetLast()
 		hbMessage.Info["ret_msg"] = "success"
+
+		//具备任务管理器的情况
+		if DefaultHeartBeatService.taskManager != nil &&
+			(hb.retCode == RET_CODE_ACTIVE || hb.retCode == RET_CODE_ACTIVE_ACCEPT) {
+			//根据机器id获取对应任务信息
+			taskResMap := DefaultHeartBeatService.taskManager.FindInfosById(mid)
+			for _, name := range HbSyncTaskFields {
+				res, _ := taskResMap[name]
+				hbMessage.Info[name] = res
+			}
+		}
+		//响应请求
 		rspWriter.Write(hbMessage.toJsonBytes())
 		return
 
