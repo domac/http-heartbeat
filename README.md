@@ -4,15 +4,24 @@
 ### 服务层使用参考
 
 ```go
+package main
+
+import (
+	"github.com/domac/http-heartbeat/hb"
+	"log"
+	"net/http"
+	"time"
+)
+
 func init() {
-	hb.DefaultHeartBeatService = hb.NewHeartBeatService(1*time.Second, time.Second*5)
+	hb.DefaultHeartBeatService = hb.NewHeartBeatService(1*time.Second, time.Second*5, 3)
 
 	hb.DefaultHeartBeatService.AddOnlineCallBacks(func(evt *hb.HeartbeatEvent) {
-		//code 
+		//业务处理
 	})
 
 	hb.DefaultHeartBeatService.AddOfflineCallBacks(func(evt *hb.HeartbeatEvent) {
-		//code
+		//业务处理
 	})
 }
 
