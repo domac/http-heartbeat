@@ -568,8 +568,16 @@ func HeartBeatStatusWaitingCgi(rspWriter http.ResponseWriter, req *http.Request)
 //心跳api
 func HeartBeatCgi(rspWriter http.ResponseWriter, req *http.Request) {
 
+	rspWriter.Header().Set("Proto-Ver", req.Header.Get("Proto-Ver"))
+	rspWriter.Header().Set("Content-Seq", req.Header.Get("Content-Seq"))
+	rspWriter.Header().Set("Content-Mid", req.Header.Get("Content-Mid"))
+	rspWriter.Header().Set("Proto-Cmd", req.Header.Get("Proto-Cmd"))
+	rspWriter.Header().Set("Content-Encrypt", req.Header.Get("Content-Encrypt"))
+	rspWriter.Header().Set("Content-Type", req.Header.Get("Content-Type"))
+
 	var hbMessage HBMessage
 
+	//读取body
 	bodybytes, err := ioutil.ReadAll(req.Body)
 	if err == nil {
 		json.Unmarshal(bodybytes, &hbMessage)
@@ -585,27 +593,31 @@ func HeartBeatCgi(rspWriter http.ResponseWriter, req *http.Request) {
 		rspWriter.WriteHeader(http.StatusBadRequest)
 		return
 	}
+
+	//获取命令字
 	cmd := urlValues.Get("cmd")
 	icmd := string2Uint32(cmd)
-
 	if cmd == "" || icmd != HeatBeatsCmd {
 		result := CreateResult(0, "cmd invalid", nil).toJsonBytes()
 		rspWriter.Write(result)
 		return
 	}
 
+	//获取Uid
 	suid := strconv.Itoa(int(hbMessage.Uid))
-
-	if suid == "" {
+	if suid == "0" {
 		suid = urlValues.Get("uid")
 		if suid == "" {
 			hbMessage.Info["ret_code"] = -1
 			hbMessage.Info["ret_msg"] = "uid must not empty"
+			rspWriter.Header().Set("Client-Status", "6")
+			//rspWriter.WriteHeader(http.StatusForbidden)
 			rspWriter.Write(hbMessage.toJsonBytes())
 			return
 		}
 	}
 
+	//获取Mid
 	mid := urlValues.Get("mid")
 	if mid == "" {
 		hbMessage.Info["ret_code"] = -1
@@ -617,10 +629,15 @@ func HeartBeatCgi(rspWriter http.ResponseWriter, req *http.Request) {
 	//是否初始化默认的心跳服务
 	if DefaultHeartBeatService != nil {
 
+		hbMessage.HbInterval = uint32(DefaultHeartBeatService.rate / time.Second)
+
 		hb, err := DefaultHeartBeatService.Attach(suid, mid)
 		if err != nil {
+			//需要响应重新更换mid的报文回去
 			hbMessage.Info["ret_code"] = -1
-			hbMessage.Info["ret_msg"] = "heartbeat attach fail"
+			hbMessage.Info["ret_msg"] = "register"
+			rspWriter.Header().Set("Client-Status", "6")
+			//rspWriter.WriteHeader(http.StatusForbidden)
 			rspWriter.Write(hbMessage.toJsonBytes())
 			return
 		}
@@ -634,6 +651,7 @@ func HeartBeatCgi(rspWriter http.ResponseWriter, req *http.Request) {
 	} else {
 		hbMessage.Info["ret_code"] = -1
 		hbMessage.Info["ret_msg"] = "heartbeat server was shutdown"
+		//rspWriter.WriteHeader(http.StatusForbidden)
 		rspWriter.Write(hbMessage.toJsonBytes())
 		return
 	}

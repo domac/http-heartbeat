@@ -24,3 +24,9 @@ func main() {
 	http.ListenAndServe(":10029", nil)
 }
 ```
+
+### 客户端上报参加
+
+```
+curl -d '{"Uid":20001,"HbInterval":5,"ClientTime":123}'  'http://localhost:10029/hb?cmd=5103&mid=1001'
+```

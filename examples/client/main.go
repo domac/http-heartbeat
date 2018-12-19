@@ -76,7 +76,7 @@ func main() {
 			for j := 0; j < request_count; j++ {
 
 				hmsg.ClientTime = uint64(time.Now().Unix())
-				hmsg.HbInterval = 5
+				hmsg.HbInterval = 200
 
 				uid := i * 20
 				mid := i * j
