@@ -111,7 +111,9 @@ func (test *TestSyncTask) Flush() error {
 }
 
 func (test *TestSyncTask) QueryById(id string) (interface{}, error) {
+	test.mu.RLock()
 	data, ok := test.testMap[id]
+	test.mu.RUnlock()
 	if !ok {
 		return uint64(0), nil
 	}
