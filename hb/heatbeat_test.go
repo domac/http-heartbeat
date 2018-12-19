@@ -49,7 +49,7 @@ func TestHashFunc(t *testing.T) {
 }
 
 func TestAttachHb(t *testing.T) {
-	hbservice := NewHeartBeatService(1*time.Second, time.Second)
+	hbservice := NewHeartBeatService(1*time.Second, time.Second, 3)
 	defer hbservice.Stop()
 	evt, err := hbservice.Attach("u001", "m001")
 	if err != nil {
@@ -153,7 +153,7 @@ func TestAttachHb(t *testing.T) {
 }
 
 func TestHbEventChange(t *testing.T) {
-	hbservice := NewHeartBeatService(1*time.Second, time.Second)
+	hbservice := NewHeartBeatService(1*time.Second, time.Second, 3)
 	defer hbservice.Stop()
 
 	evt, err := hbservice.Attach("u001", "m001")
@@ -213,7 +213,7 @@ func TestHbEventChange(t *testing.T) {
 }
 
 func TestActiveCheck(t *testing.T) {
-	hbservice := NewHeartBeatService(1*time.Second, 1*time.Second)
+	hbservice := NewHeartBeatService(1*time.Second, 1*time.Second, 3)
 	defer hbservice.Stop()
 
 	evt, err := hbservice.Attach("test-a-001", "test-a-mid")
@@ -235,7 +235,7 @@ func TestActiveCheck(t *testing.T) {
 }
 
 func TestFindByMid(t *testing.T) {
-	hbservice := NewHeartBeatService(1*time.Second, 3*time.Second)
+	hbservice := NewHeartBeatService(1*time.Second, 3*time.Second, 3)
 	defer hbservice.Stop()
 
 	testMid := "mid-a"
@@ -284,7 +284,7 @@ func TestFindByMid(t *testing.T) {
 }
 
 func TestCallBack(t *testing.T) {
-	hbservice := NewHeartBeatService(1*time.Second, 1*time.Second)
+	hbservice := NewHeartBeatService(1*time.Second, 1*time.Second, 3)
 	defer hbservice.Stop()
 
 	hbservice.AddOnlineCallBacks(func(evt *HeartbeatEvent) {
@@ -332,7 +332,7 @@ func BenchmarkHashFunc(b *testing.B) {
 }
 
 func BenchmarkAttach(b *testing.B) {
-	hbservice := NewHeartBeatService(1*time.Second, time.Second)
+	hbservice := NewHeartBeatService(1*time.Second, time.Second, 3)
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
 		uid := fmt.Sprintf("uid-%d", i)

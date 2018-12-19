@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
@@ -25,10 +26,10 @@ var (
 var DefaultHeartBeatService *HeartBeatService
 
 const (
-	SHARDS_NUM      = 32           //存储分片数
-	EVENT_CHAN_SIZE = 4096         //事件任务通道缓冲区大小
-	RETRY_COUNT     = 3            //心跳重试次数
-	HeatBeatsCmd    = uint32(5103) //接口请求参数指定命令字
+	SHARDS_NUM          = 32           //存储分片数
+	EVENT_CHAN_SIZE     = 4096         //事件任务通道缓冲区大小
+	DEFAULT_RETRY_COUNT = 3            //心跳重试次数
+	HeatBeatsCmd        = uint32(5103) //接口请求参数指定命令字
 )
 
 const (
@@ -72,6 +73,15 @@ type (
 		retCode    RET_CODE
 
 		counter uint32 //计数器
+	}
+
+	//心跳交换信息
+	HBMessage struct {
+		HbInterval uint32                 `json:"HbInterval"`
+		ClientTime uint64                 `json:"ClientTime"`
+		ServerTime uint64                 `json:"ServerTime"`
+		Uid        uint64                 `json:"Uid"`
+		Info       map[string]interface{} `json:"Info"`
 	}
 
 	Result struct {
@@ -147,6 +157,7 @@ type HeartBeatService struct {
 
 	stopChan chan struct{}
 	running  bool //服务运行状态
+	retry    int
 
 	eventNotifyChan chan *HeartbeatEvent //任务队列
 
@@ -157,10 +168,14 @@ type HeartBeatService struct {
 }
 
 //根据检测间隔和心跳频率构造心跳服务
-func NewHeartBeatService(checkPeriod time.Duration, rate time.Duration) *HeartBeatService {
+func NewHeartBeatService(checkPeriod time.Duration, rate time.Duration, retry int) *HeartBeatService {
+
+	if retry < 0 {
+		retry = DEFAULT_RETRY_COUNT
+	}
 
 	//心跳行为的最大尝试次数 = 最大超时间距/QPS + 1
-	maxTryCount := ((rate * RETRY_COUNT) / time.Second) + 1
+	maxTryCount := ((rate * time.Duration(retry)) / time.Second) + 1
 
 	hbs := &HeartBeatService{
 		checkPeriod:     checkPeriod,
@@ -168,6 +183,7 @@ func NewHeartBeatService(checkPeriod time.Duration, rate time.Duration) *HeartBe
 		stopChan:        make(chan struct{}, 1),
 		eventNotifyChan: make(chan *HeartbeatEvent, EVENT_CHAN_SIZE),
 		maxTryCount:     uint32(maxTryCount),
+		retry:           retry,
 	}
 	for i := 0; i < SHARDS_NUM; i++ {
 		hbs.ActiveEvents[i] = make(map[string]*HeartbeatEvent)
@@ -329,7 +345,7 @@ func (hb *HeartBeatService) Attach(uid, mid string) (*HeartbeatEvent, error) {
 	}
 
 	idx := hashFunc(mid) % SHARDS_NUM
-	rate := hb.rate * RETRY_COUNT
+	rate := hb.rate * time.Duration(hb.retry)
 
 	//判断是否在active中存在
 	hb.activeLock[idx].RLock()
@@ -347,7 +363,7 @@ func (hb *HeartBeatService) Attach(uid, mid string) (*HeartbeatEvent, error) {
 		return evt, nil
 	} else {
 		//同一个终端
-		if uid == hb.ActiveEvents[idx][mid].info.Uid {
+		if uid == evt.info.Uid {
 			//更新最后更新时间
 			hb.activeLock[idx].Lock()
 			hb.ActiveEvents[idx][mid].last = time.Now()
@@ -507,6 +523,14 @@ func (result Result) toJsonBytes() []byte {
 	return b
 }
 
+func (msg HBMessage) toJsonBytes() []byte {
+	b, err := json.Marshal(msg)
+	if err != nil {
+		return nil
+	}
+	return b
+}
+
 //全局心跳活跃状态api
 func HeartBeatStatusActivesCgi(rspWriter http.ResponseWriter, req *http.Request) {
 	if DefaultHeartBeatService != nil {
@@ -543,6 +567,19 @@ func HeartBeatStatusWaitingCgi(rspWriter http.ResponseWriter, req *http.Request)
 
 //心跳api
 func HeartBeatCgi(rspWriter http.ResponseWriter, req *http.Request) {
+
+	var hbMessage HBMessage
+
+	bodybytes, err := ioutil.ReadAll(req.Body)
+	if err == nil {
+		json.Unmarshal(bodybytes, &hbMessage)
+	} else {
+		hbMessage = HBMessage{}
+	}
+
+	hbMessage.Info = make(map[string]interface{})
+	hbMessage.ServerTime = uint64(time.Now().Unix())
+
 	urlValues, err := url.ParseQuery(req.URL.RawQuery)
 	if err != nil {
 		rspWriter.WriteHeader(http.StatusBadRequest)
@@ -557,32 +594,47 @@ func HeartBeatCgi(rspWriter http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	uid := urlValues.Get("uid")
-	if uid == "" {
-		rspWriter.Write(CreateResult(-1, "uid must not empty", nil).toJsonBytes())
-		return
+	suid := strconv.Itoa(int(hbMessage.Uid))
+
+	if suid == "" {
+		suid = urlValues.Get("uid")
+		if suid == "" {
+			hbMessage.Info["ret_code"] = -1
+			hbMessage.Info["ret_msg"] = "uid must not empty"
+			rspWriter.Write(hbMessage.toJsonBytes())
+			return
+		}
 	}
 
 	mid := urlValues.Get("mid")
 	if mid == "" {
-		rspWriter.Write(CreateResult(-1, "mid must not empty", nil).toJsonBytes())
+		hbMessage.Info["ret_code"] = -1
+		hbMessage.Info["ret_msg"] = "mid must not empty"
+		rspWriter.Write(hbMessage.toJsonBytes())
 		return
 	}
 
 	//是否初始化默认的心跳服务
 	if DefaultHeartBeatService != nil {
 
-		hb, err := DefaultHeartBeatService.Attach(uid, mid)
+		hb, err := DefaultHeartBeatService.Attach(suid, mid)
 		if err != nil {
-			rspWriter.Write(CreateResult(-1, "heartbeat attach fail", nil).toJsonBytes())
+			hbMessage.Info["ret_code"] = -1
+			hbMessage.Info["ret_msg"] = "heartbeat attach fail"
+			rspWriter.Write(hbMessage.toJsonBytes())
 			return
 		}
 
-		result := CreateResult(int(hb.retCode), hb.GetLast(), nil).toJsonBytes()
-		rspWriter.Write(result)
+		hbMessage.Info["ret_code"] = hb.retCode
+		hbMessage.Info["last"] = hb.GetLast()
+		hbMessage.Info["ret_msg"] = "success"
+		rspWriter.Write(hbMessage.toJsonBytes())
+		return
 
 	} else {
-		result := CreateResult(-2, "heartbeat server not working", nil).toJsonBytes()
-		rspWriter.Write(result)
+		hbMessage.Info["ret_code"] = -1
+		hbMessage.Info["ret_msg"] = "heartbeat server was shutdown"
+		rspWriter.Write(hbMessage.toJsonBytes())
+		return
 	}
 }

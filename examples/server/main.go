@@ -8,7 +8,7 @@ import (
 )
 
 func init() {
-	hb.DefaultHeartBeatService = hb.NewHeartBeatService(1*time.Second, time.Second*5)
+	hb.DefaultHeartBeatService = hb.NewHeartBeatService(1*time.Second, time.Second*5, 3)
 
 	hb.DefaultHeartBeatService.AddOnlineCallBacks(func(evt *hb.HeartbeatEvent) {
 		log.Printf(">>> Online : mid=%s, uid=%s, last=%s, next=%s\n", evt.GetInfo().Mid, evt.GetInfo().Uid, evt.GetLast(), evt.GetNext())

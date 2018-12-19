@@ -2,7 +2,9 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
+	"github.com/domac/http-heartbeat/hb"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -12,8 +14,8 @@ import (
 )
 
 const (
-	client_num    = 100
-	request_count = 20000
+	client_num    = 200
+	request_count = 2000000
 )
 
 func DoRequest(httpClient *http.Client, headers map[string]string, method, loadUrl string, bodydata []byte) {
@@ -67,9 +69,23 @@ func main() {
 		go func(i int) {
 			hc := httpclients[i]
 			headers := make(map[string]string)
-			bodydata := []byte{}
-			loadUrl := fmt.Sprintf("http://localhost:10029/hb?cmd=5103&uid=u-%d&mid=m-%d", i*20, i)
+
+			hmsg := &hb.HBMessage{}
+
+			//loadUrl := fmt.Sprintf("http://localhost:10029/hb?cmd=5103&uid=u-%d&mid=m-%d", i*20, i+1)
 			for j := 0; j < request_count; j++ {
+
+				hmsg.ClientTime = uint64(time.Now().Unix())
+				hmsg.HbInterval = 5
+
+				uid := i * 20
+				mid := i * j
+
+				hmsg.Uid = uint64(uid)
+
+				bodydata, _ := json.Marshal(hmsg)
+
+				loadUrl := fmt.Sprintf("http://localhost:10029/hb?cmd=5103&mid=m-%d", mid)
 				DoRequest(hc, headers, "GET", loadUrl, bodydata)
 				time.Sleep(1 * time.Second)
 			}
