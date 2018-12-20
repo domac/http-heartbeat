@@ -1,11 +1,31 @@
 package main
 
 import (
+	"context"
 	"github.com/domac/http-heartbeat/hb"
 	"log"
 	"net/http"
 	"time"
 )
+
+type ConfigTask struct {
+}
+
+func (c *ConfigTask) Sync(ctx context.Context) {
+
+}
+func (c *ConfigTask) Close() error {
+	return nil
+}
+func (c *ConfigTask) Name() string {
+	return "ConfigTime"
+}
+func (c *ConfigTask) Flush() error {
+	return nil
+}
+func (c *ConfigTask) QueryById(id string) (interface{}, error) {
+	return 99999, nil
+}
 
 func init() {
 
@@ -14,6 +34,7 @@ func init() {
 	manager := hb.NewTaskSyncManager()
 	testTask := hb.NewTestSyncTask()
 	manager.AddTaskSyncs(testTask)
+	manager.AddTaskSyncs(&ConfigTask{})
 
 	hb.DefaultHeartBeatService.Schedule(manager)
 
@@ -21,6 +42,7 @@ func init() {
 		log.Printf("Online : mid=%s, uid=%s, last=%s, next=%s\n", evt.GetInfo().Mid, evt.GetInfo().Uid, evt.GetLast(), evt.GetNext())
 		m := hb.DefaultHeartBeatService.GetTaskManager().FindInfosById(evt.GetInfo().Mid)
 		log.Printf(">>> test=> %v\n", m["TaskTime"])
+		log.Printf(">>> config=> %v\n", m["ConfigTime"])
 	})
 
 	hb.DefaultHeartBeatService.AddOfflineCallBacks(func(evt *hb.HeartbeatEvent) {
