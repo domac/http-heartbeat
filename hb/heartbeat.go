@@ -94,6 +94,27 @@ type (
 		RetMessage string `json:"ret_msg"`
 		Data       []byte `json:"data"`
 	}
+
+	//RPC客户端信息
+	MsgClientInfo struct {
+		IpPort string
+		Mid    string
+	}
+
+	//RPC请求信息
+	MsgConnReqPkt struct {
+		ClientInfo MsgClientInfo
+		Data       []byte
+	}
+
+	//RPC响应信息
+	MsgConnRspPkt struct {
+		RetCode int32
+		Data    []byte
+	}
+
+	IConn struct {
+	}
 )
 
 //创建心跳事件
@@ -639,7 +660,7 @@ func HeartBeatCgi(rspWriter http.ResponseWriter, req *http.Request) {
 	if suid == "0" {
 		suid = urlValues.Get("uid")
 		if suid == "" {
-			hbMessage.Info["ret_code"] = -1
+			hbMessage.Info["ret_code"] = RET_CODE_REJECT
 			hbMessage.Info["ret_msg"] = "uid must not empty"
 			rspWriter.Header().Set("Client-Status", "6")
 			//rspWriter.WriteHeader(http.StatusForbidden)
@@ -666,7 +687,7 @@ func HeartBeatCgi(rspWriter http.ResponseWriter, req *http.Request) {
 		hb, err := DefaultHeartBeatService.Attach(suid, mid)
 		if err != nil {
 			//需要响应重新更换mid的报文回去
-			hbMessage.Info["ret_code"] = -1
+			hbMessage.Info["ret_code"] = RET_CODE_REJECT
 			hbMessage.Info["ret_msg"] = "register"
 			rspWriter.Header().Set("Client-Status", "6")
 			//rspWriter.WriteHeader(http.StatusForbidden)
@@ -700,4 +721,93 @@ func HeartBeatCgi(rspWriter http.ResponseWriter, req *http.Request) {
 		rspWriter.Write(hbMessage.toJsonBytes())
 		return
 	}
+}
+
+//心跳RPC请求服务
+//处理逻辑与http一样
+//目的是部分心跳可能是上报到前置网关,这里提供RPC目的是接受网关转发过来的心跳请求
+func (conn *IConn) OnData(req *MsgConnReqPkt, rsp *MsgConnRspPkt) error {
+	hbMessage := HBMessage{}
+
+	if err := json.Unmarshal(req.Data, &hbMessage); err != nil {
+		return err
+	}
+
+	hbMessage.Info = make(map[string]interface{})
+	hbMessage.ServerTime = uint64(time.Now().Unix())
+
+	//获取uid
+	suid := strconv.Itoa(int(hbMessage.Uid))
+	if suid == "0" {
+		hbMessage.Info["ret_code"] = RET_CODE_REJECT
+		hbMessage.Info["ret_msg"] = "uid must not empty"
+		rsp.Data = hbMessage.toJsonBytes()
+		return nil
+	}
+
+	//获取mid
+	mid := req.ClientInfo.Mid
+	if mid == "" {
+		hbMessage.Info["ret_code"] = RET_CODE_REJECT
+		hbMessage.Info["ret_msg"] = "mid must not empty"
+		rsp.RetCode = RET_CODE_REJECT
+		rsp.Data = hbMessage.toJsonBytes()
+		return nil
+	}
+
+	//是否初始化默认的心跳服务
+	if DefaultHeartBeatService != nil {
+
+		//返回心跳间隔(单位秒)
+		hbMessage.HbInterval = uint32(DefaultHeartBeatService.rate / time.Second)
+
+		hb, err := DefaultHeartBeatService.Attach(suid, mid)
+		if err != nil {
+			//需要响应重新更换mid的报文回去
+			hbMessage.Info["ret_code"] = RET_CODE_REJECT
+			hbMessage.Info["ret_msg"] = "register"
+			rsp.RetCode = RET_CODE_REJECT
+			rsp.Data = hbMessage.toJsonBytes()
+			return nil
+		}
+
+		//正确的心跳返回
+		hbMessage.Info["ret_code"] = hb.retCode
+		hbMessage.Info["last"] = hb.GetLast()
+		hbMessage.Info["ret_msg"] = "success"
+
+		//具备任务管理器的情况
+		if DefaultHeartBeatService.taskManager != nil &&
+			(hb.retCode == RET_CODE_ACTIVE || hb.retCode == RET_CODE_ACTIVE_ACCEPT) {
+			//根据机器id获取对应任务信息
+			taskResMap := DefaultHeartBeatService.taskManager.FindInfosById(mid)
+			for _, name := range HbSyncTaskFields {
+				res, _ := taskResMap[name]
+				hbMessage.Info[name] = res
+			}
+		}
+		//响应请求
+		rsp.RetCode = int32(hb.retCode)
+		rsp.Data = hbMessage.toJsonBytes()
+		return nil
+
+	} else {
+		hbMessage.Info["ret_code"] = -1
+		hbMessage.Info["ret_msg"] = "heartbeat server was shutdown"
+		rsp.RetCode = RET_CODE_REJECT
+		rsp.Data = hbMessage.toJsonBytes()
+		return nil
+	}
+
+}
+
+func (req *MsgConnReqPkt) SetInfo(mid, uid string) *MsgConnReqPkt {
+	var hbMessage HBMessage
+	iuid, _ := strconv.Atoi(uid)
+	hbMessage.Uid = uint64(iuid)
+	hbMessage.ClientTime = uint64(time.Now().Unix())
+	hbMessage.HbInterval = 3
+	req.ClientInfo.Mid = mid
+	req.Data = hbMessage.toJsonBytes()
+	return req
 }

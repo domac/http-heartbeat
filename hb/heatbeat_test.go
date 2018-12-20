@@ -1,7 +1,10 @@
 package hb
 
 import (
+	"encoding/json"
 	"fmt"
+	"net"
+	"net/rpc"
 	"testing"
 	"time"
 )
@@ -301,6 +304,60 @@ func TestCallBack(t *testing.T) {
 
 	time.Sleep(4 * time.Second)
 
+}
+
+func TestRpcCall(t *testing.T) {
+	DefaultHeartBeatService = NewHeartBeatService(1*time.Second, 5*time.Second, 3)
+	defer DefaultHeartBeatService.Stop()
+
+	//开启测试rpc服务端
+	go func() {
+		rpc.Register(new(IConn))
+		tcpAddr, _ := net.ResolveTCPAddr("tcp", "127.0.0.1:20022")
+		listener, _ := net.ListenTCP("tcp", tcpAddr)
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				continue
+			}
+			go rpc.ServeConn(conn)
+		}
+	}()
+
+	conn, err := net.Dial("tcp", "127.0.0.1:20022")
+	if err != nil {
+		t.Fail()
+		t.Error(err)
+	}
+	client := rpc.NewClient(conn)
+
+	var req MsgConnReqPkt
+	var rsp MsgConnRspPkt
+
+	req.SetInfo("1024", "7777")
+	client.Call("IConn.OnData", &req, &rsp)
+
+	var rspmessage HBMessage
+	json.Unmarshal(rsp.Data, &rspmessage)
+
+	if rspmessage.Uid != 7777 {
+		t.Fail()
+	}
+
+	if rspmessage.HbInterval != 5 {
+		t.Fail()
+	}
+
+	ret_code, ok := rspmessage.Info["ret_code"]
+	if !ok {
+		t.Fail()
+	}
+
+	if ret_code.(float64) != float64(1) {
+		t.Fail()
+	}
+
+	time.Sleep(10 * time.Second)
 }
 
 func BenchmarkStr2Bytes(b *testing.B) {
