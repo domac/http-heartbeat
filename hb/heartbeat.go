@@ -672,7 +672,7 @@ func HeartBeatCgi(rspWriter http.ResponseWriter, req *http.Request) {
 	//获取Mid
 	mid := urlValues.Get("mid")
 	if mid == "" {
-		hbMessage.Info["ret_code"] = -1
+		hbMessage.Info["ret_code"] = RET_CODE_REJECT
 		hbMessage.Info["ret_msg"] = "mid must not empty"
 		rspWriter.Write(hbMessage.toJsonBytes())
 		return
@@ -715,7 +715,7 @@ func HeartBeatCgi(rspWriter http.ResponseWriter, req *http.Request) {
 		return
 
 	} else {
-		hbMessage.Info["ret_code"] = -1
+		hbMessage.Info["ret_code"] = RET_CODE_REJECT
 		hbMessage.Info["ret_msg"] = "heartbeat server was shutdown"
 		//rspWriter.WriteHeader(http.StatusForbidden)
 		rspWriter.Write(hbMessage.toJsonBytes())
@@ -792,7 +792,7 @@ func (conn *IConn) OnData(req *MsgConnReqPkt, rsp *MsgConnRspPkt) error {
 		return nil
 
 	} else {
-		hbMessage.Info["ret_code"] = -1
+		hbMessage.Info["ret_code"] = RET_CODE_REJECT
 		hbMessage.Info["ret_msg"] = "heartbeat server was shutdown"
 		rsp.RetCode = RET_CODE_REJECT
 		rsp.Data = hbMessage.toJsonBytes()
