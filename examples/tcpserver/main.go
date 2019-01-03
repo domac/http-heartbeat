@@ -53,7 +53,7 @@ func init() {
 
 func main() {
 	rpc.Register(new(hb.IConn))
-	tcpAddr, _ := net.ResolveTCPAddr("tcp", "127.0.0.1:10029")
+	tcpAddr, _ := net.ResolveTCPAddr("tcp", "0.0.0.0:10029")
 	listener, _ := net.ListenTCP("tcp", tcpAddr)
 	for {
 		conn, err := listener.Accept()
